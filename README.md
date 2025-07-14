@@ -1,6 +1,9 @@
 # 🧠 LLM Workflow Automations
 
-Automate your daily workflows using Large Language Models (LLMs), scheduled tasks (crons), and API integrations. This repo includes a collection of reusable automation workflows that save time or help you generate income, with minimal setup.
+Automate your daily workflows using Large Language Models (LLMs), scheduled
+tasks (crons), and API integrations. This repo includes a collection of reusable
+automation workflows that save time or help you generate income, with minimal
+setup.
 
 ## ✨ Features
 

@@ -16,8 +16,10 @@ const createGetRecentEmailsTool = (env: Env) =>
       maxResults: z.number().optional().default(50),
       userId: z.string().optional().default("me"),
       timeframe: z.number().optional().default(1),
-      timeframeUnit: z.enum(["minutes", "hours", "days"]).optional().default("days"),
-      recipientEmail: z.string().email()
+      timeframeUnit: z.enum(["minutes", "hours", "days"]).optional().default(
+        "days",
+      ),
+      recipientEmail: z.string().email(),
     }),
     outputSchema: z.object({
       emails: z.array(z.any()),
@@ -26,7 +28,7 @@ const createGetRecentEmailsTool = (env: Env) =>
       userId: z.string(),
       timeframe: z.number(),
       timeframeUnit: z.string(),
-      recipientEmail: z.string()
+      recipientEmail: z.string(),
     }),
     execute: async ({ context }: { context: any }) => {
       // Calculate the timestamp for the timeframe
@@ -35,13 +37,19 @@ const createGetRecentEmailsTool = (env: Env) =>
 
       switch (context.timeframeUnit) {
         case "minutes":
-          cutoffTime = new Date(now.getTime() - (context.timeframe * 60 * 1000));
+          cutoffTime = new Date(
+            now.getTime() - (context.timeframe * 60 * 1000),
+          );
           break;
         case "hours":
-          cutoffTime = new Date(now.getTime() - (context.timeframe * 60 * 60 * 1000));
+          cutoffTime = new Date(
+            now.getTime() - (context.timeframe * 60 * 60 * 1000),
+          );
           break;
         case "days":
-          cutoffTime = new Date(now.getTime() - (context.timeframe * 24 * 60 * 60 * 1000));
+          cutoffTime = new Date(
+            now.getTime() - (context.timeframe * 24 * 60 * 60 * 1000),
+          );
           break;
         default:
           cutoffTime = new Date(now.getTime() - (24 * 60 * 60 * 1000)); // Default to 1 day
@@ -49,20 +57,22 @@ const createGetRecentEmailsTool = (env: Env) =>
 
       // Format date for Gmail API (YYYY/MM/DD format)
       const year = cutoffTime.getFullYear();
-      const month = String(cutoffTime.getMonth() + 1).padStart(2, '0');
-      const day = String(cutoffTime.getDate()).padStart(2, '0');
+      const month = String(cutoffTime.getMonth() + 1).padStart(2, "0");
+      const day = String(cutoffTime.getDate()).padStart(2, "0");
       const afterDate = `${year}/${month}/${day}`;
 
       // Use Gmail's 'after' parameter for more reliable filtering
       const query = `after:${afterDate}`;
 
-      console.log(`Searching emails with query: "${query}" (cutoff: ${cutoffTime.toISOString()})`);
+      console.log(
+        `Searching emails with query: "${query}" (cutoff: ${cutoffTime.toISOString()})`,
+      );
 
       const result = await env.GMAIL.GetEmails({
         userId: context.userId,
         query: query,
         maxResults: context.maxResults,
-        includeSpamTrash: false
+        includeSpamTrash: false,
       });
 
       // Additional client-side filtering to ensure accuracy
@@ -72,14 +82,16 @@ const createGetRecentEmailsTool = (env: Env) =>
       const filteredEmails = allEmails.filter((email: any) => {
         if (!email.internalDate && !email.date) return true; // Include if no date info
 
-        const emailTimestamp = email.internalDate ?
-          parseInt(email.internalDate) :
-          new Date(email.date).getTime();
+        const emailTimestamp = email.internalDate
+          ? parseInt(email.internalDate)
+          : new Date(email.date).getTime();
 
         return emailTimestamp >= cutoffTimestamp;
       });
 
-      console.log(`Found ${allEmails.length} emails from Gmail API, ${filteredEmails.length} after client-side filtering`);
+      console.log(
+        `Found ${allEmails.length} emails from Gmail API, ${filteredEmails.length} after client-side filtering`,
+      );
 
       return {
         emails: filteredEmails,
@@ -88,7 +100,7 @@ const createGetRecentEmailsTool = (env: Env) =>
         userId: context.userId,
         timeframe: context.timeframe,
         timeframeUnit: context.timeframeUnit,
-        recipientEmail: context.recipientEmail
+        recipientEmail: context.recipientEmail,
       };
     },
   });
@@ -104,7 +116,7 @@ const createProcessEmailsTool = (env: Env) =>
       userId: z.string(),
       timeframe: z.number(),
       timeframeUnit: z.string(),
-      recipientEmail: z.string()
+      recipientEmail: z.string(),
     }),
     outputSchema: z.object({
       summary: z.string(),
@@ -114,7 +126,7 @@ const createProcessEmailsTool = (env: Env) =>
       recipientEmail: z.string(),
       timeframe: z.number(),
       timeframeUnit: z.string(),
-      userId: z.string()
+      userId: z.string(),
     }),
     execute: async ({ context }: { context: any }) => {
       const emails = context.emails || [];
@@ -127,24 +139,26 @@ const createProcessEmailsTool = (env: Env) =>
 
       // If no emails found
       if (emailsWithContent.length === 0) {
-        summary = `No emails found in the last ${context.timeframe} ${context.timeframeUnit}.`;
+        summary =
+          `No emails found in the last ${context.timeframe} ${context.timeframeUnit}.`;
       } else {
         // Create a text representation of emails for summarization
         const emailsText = emailsWithContent.map((email: any) => {
-          const subject = email.subject || 'No Subject';
-          const from = email.from || 'Unknown Sender';
-          const snippet = email.snippet || email.body?.text || 'No content';
-          const date = email.date || email.internalDate || 'Unknown date';
+          const subject = email.subject || "No Subject";
+          const from = email.from || "Unknown Sender";
+          const snippet = email.snippet || email.body?.text || "No content";
+          const date = email.date || email.internalDate || "Unknown date";
 
           return `Subject: ${subject}
 From: ${from}
 Date: ${date}
 Content: ${snippet}
 ---`;
-        }).join('\n\n');
+        }).join("\n\n");
 
         // Generate AI summary
-        const prompt = `Please provide a comprehensive summary of the following ${emailsWithContent.length} emails from the last ${context.timeframe} ${context.timeframeUnit}. 
+        const prompt =
+          `Please provide a comprehensive summary of the following ${emailsWithContent.length} emails from the last ${context.timeframe} ${context.timeframeUnit}. 
 
 Group the emails by topic/category and highlight:
 - Key action items or requests
@@ -161,11 +175,11 @@ Please structure your response with clear sections and bullet points for easy re
           messages: [
             {
               role: "user",
-              content: prompt
-            }
+              content: prompt,
+            },
           ],
           maxTokens: 4000,
-          temperature: 0.3
+          temperature: 0.3,
         });
 
         summary = aiResult.text || "Failed to generate summary";
@@ -180,7 +194,7 @@ Please structure your response with clear sections and bullet points for easy re
         recipientEmail: context.recipientEmail,
         timeframe: context.timeframe,
         timeframeUnit: context.timeframeUnit,
-        userId: context.userId
+        userId: context.userId,
       };
     },
   });
@@ -197,7 +211,7 @@ const createSendEmailTool = (env: Env) =>
       recipientEmail: z.string(),
       timeframe: z.number(),
       timeframeUnit: z.string(),
-      userId: z.string()
+      userId: z.string(),
     }),
     outputSchema: z.object({
       summary: z.string(),
@@ -205,17 +219,18 @@ const createSendEmailTool = (env: Env) =>
       totalResults: z.number(),
       usage: z.any().optional(),
       emailSent: z.boolean(),
-      messageId: z.string()
+      messageId: z.string(),
     }),
     execute: async ({ context }: { context: any }) => {
-      const subject = `Email Summary - ${context.emailCount} emails from last ${context.timeframe} ${context.timeframeUnit}`;
+      const subject =
+        `Email Summary - ${context.emailCount} emails from last ${context.timeframe} ${context.timeframeUnit}`;
 
       const result = await env.GMAIL.SendEmail({
         userId: context.userId,
         to: context.recipientEmail,
         subject: subject,
         bodyText: context.summary,
-        bodyHtml: `<pre>${context.summary}</pre>`
+        bodyHtml: `<pre>${context.summary}</pre>`,
       });
 
       return {
@@ -224,7 +239,7 @@ const createSendEmailTool = (env: Env) =>
         totalResults: context.totalResults,
         usage: context.usage,
         emailSent: true,
-        messageId: result.id || ""
+        messageId: result.id || "",
       };
     },
   });
@@ -240,15 +255,17 @@ const createEmailSummaryWorkflow = (env: Env) => {
       maxResults: z.number().optional().default(50),
       userId: z.string().optional().default("me"),
       timeframe: z.number().optional().default(1),
-      timeframeUnit: z.enum(["minutes", "hours", "days"]).optional().default("days"),
-      recipientEmail: z.string().email()
+      timeframeUnit: z.enum(["minutes", "hours", "days"]).optional().default(
+        "days",
+      ),
+      recipientEmail: z.string().email(),
     }),
     outputSchema: z.object({
       summary: z.string(),
       emailCount: z.number(),
       totalResults: z.number(),
       usage: z.any().optional(),
-      emailSent: z.boolean()
+      emailSent: z.boolean(),
     }),
   })
     .then(getEmailsStep)
@@ -260,7 +277,7 @@ const createEmailSummaryWorkflow = (env: Env) => {
         emailCount: inputData.emailCount,
         totalResults: inputData.totalResults,
         usage: inputData.usage,
-        emailSent: inputData.emailSent
+        emailSent: inputData.emailSent,
       };
     })
     .commit();
@@ -269,9 +286,14 @@ const createEmailSummaryWorkflow = (env: Env) => {
 const { Workflow, ...runtime } = withRuntime<Env, typeof StateSchema>({
   oauth: {
     state: StateSchema,
+    scopes: ["AI_GENERATE"],
   },
   workflows: [createEmailSummaryWorkflow],
-  tools: [createGetRecentEmailsTool, createProcessEmailsTool, createSendEmailTool],
+  tools: [
+    createGetRecentEmailsTool,
+    createProcessEmailsTool,
+    createSendEmailTool,
+  ],
 });
 
 export { Workflow };
