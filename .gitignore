@@ -1,0 +1,11 @@
+# Local storage directory for development
+storage/
+
+
+# Environment files
+.env
+.dev.vars
+
+package-lock.json
+dist/
+node_modules/
