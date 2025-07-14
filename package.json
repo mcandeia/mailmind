@@ -12,7 +12,6 @@
     "zod": "^3.24.3"
   },
   "devDependencies": {
-    "@deco/cli": "npm:@jsr/deco__cli@^0.5.12",
     "wrangler": "^4.24.3"
   }
 }
