@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "e-summarizer": {
+      "type": "http",
+      "url": "https://localhost-7e34782b.deco.host/mcp"
+    }
+  }
+}
