@@ -9,3 +9,5 @@ storage/
 package-lock.json
 dist/
 node_modules/
+bun.lock
+.wrangler

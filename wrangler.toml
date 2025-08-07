@@ -1,13 +1,12 @@
 #:schema node_modules/@deco/workers-runtime/config-schema.json
 main = "main.ts"
 compatibility_date = "2025-06-17"
-compatibility_flags = [ "nodejs_compat" ]
+compatibility_flags = ["nodejs_compat"]
 name = "e-summarizer"
 scope = "candeia"
 
 [deco]
 enable_workflows = true
-local = false
 
 [deco.integration]
 description = "MailMind is your smart email assistant that scans your inbox, summarizes important messages, and sends you a clean, human-friendly digest every day."
@@ -21,7 +20,7 @@ integration_name = "@deco/google-gmail"
 
 [[migrations]]
 tag = "v1"
-new_classes = [ "Workflow" ]
+new_classes = ["Workflow"]
 
 [durable_objects]
 [[durable_objects.bindings]]

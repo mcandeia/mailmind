@@ -6,7 +6,7 @@ import {
   createWorkflow,
 } from "@deco/workers-runtime/mastra";
 import { z } from "zod";
-import { type Env, StateSchema } from "./deco.gen.ts";
+import { type Env, StateSchema, Scopes } from "./deco.gen.ts";
 
 const createGetRecentEmailsTool = (env: Env) =>
   createTool({
@@ -286,7 +286,7 @@ const createEmailSummaryWorkflow = (env: Env) => {
 const { Workflow, ...runtime } = withRuntime<Env, typeof StateSchema>({
   oauth: {
     state: StateSchema,
-    scopes: ["AI_GENERATE"],
+    scopes: ["AI_GENERATE", Scopes.GMAIL.SendEmail, Scopes.GMAIL.GetEmails],
   },
   workflows: [createEmailSummaryWorkflow],
   tools: [
