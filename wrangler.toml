@@ -2,7 +2,7 @@
 main = "main.ts"
 compatibility_date = "2025-06-17"
 compatibility_flags = ["nodejs_compat"]
-name = "e-summarizer"
+name = "demo-app"
 scope = "candeia"
 
 [deco]
@@ -10,13 +10,18 @@ enable_workflows = true
 
 [deco.integration]
 description = "MailMind is your smart email assistant that scans your inbox, summarizes important messages, and sends you a clean, human-friendly digest every day."
-friendlyName = "MailMind"
+friendlyName = "Demo MailMind"
 icon = "https://assets.decocache.com/mcp/30f31730-89a0-4a97-8405-f35c674ebe7a/mailmind.png"
 
 [[deco.bindings]]
 name = "GMAIL"
 type = "mcp"
 integration_name = "@deco/google-gmail"
+
+[[deco.bindings]]
+name = "SEND_EMAIL_CONTRACT"
+type = "mcp"
+integration_name = "@deco/contracts"
 
 [[migrations]]
 tag = "v1"

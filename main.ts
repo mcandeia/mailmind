@@ -1,12 +1,23 @@
 // deno-lint-ignore-file no-explicit-any require-await
-import { withRuntime } from "@deco/workers-runtime";
+import { DefaultEnv, withRuntime } from "@deco/workers-runtime";
 import {
   createStepFromTool,
   createTool,
   createWorkflow,
 } from "@deco/workers-runtime/mastra";
 import { z } from "zod";
-import { type Env, StateSchema, Scopes } from "./deco.gen.ts";
+import { type Env as _Env, StateSchema, Scopes } from "./deco.gen.ts";
+import { drizzle, sqliteTable, integer, text } from '@deco/workers-runtime/drizzle';
+import { orm } from '@deco/workers-runtime/drizzle';
+type Env = _Env & DefaultEnv
+
+const emailsSentTable = sqliteTable("emails_sent", {
+  id: integer("id").primaryKey(),
+  email: text("email").notNull(),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
 
 const createGetRecentEmailsTool = (env: Env) =>
   createTool({
@@ -30,7 +41,7 @@ const createGetRecentEmailsTool = (env: Env) =>
       timeframeUnit: z.string(),
       recipientEmail: z.string(),
     }),
-    execute: async ({ context }: { context: any }) => {
+    execute: async ({ context }) => {
       // Calculate the timestamp for the timeframe
       const now = new Date();
       let cutoffTime: Date;
@@ -79,12 +90,12 @@ const createGetRecentEmailsTool = (env: Env) =>
       const allEmails = result.messages || [];
       const cutoffTimestamp = cutoffTime.getTime();
 
-      const filteredEmails = allEmails.filter((email: any) => {
+      const filteredEmails = allEmails.filter((email) => {
         if (!email.internalDate && !email.date) return true; // Include if no date info
 
         const emailTimestamp = email.internalDate
           ? parseInt(email.internalDate)
-          : new Date(email.date).getTime();
+          : new Date(email.date!).getTime();
 
         return emailTimestamp >= cutoffTimestamp;
       });
@@ -128,9 +139,9 @@ const createProcessEmailsTool = (env: Env) =>
       timeframeUnit: z.string(),
       userId: z.string(),
     }),
-    execute: async ({ context }: { context: any }) => {
+    execute: async ({ context }) => {
       const emails = context.emails || [];
-      const emailsWithContent = emails.filter((email: any) =>
+      const emailsWithContent = emails.filter((email) =>
         email.subject || email.snippet || email.body?.text
       );
 
@@ -143,7 +154,7 @@ const createProcessEmailsTool = (env: Env) =>
           `No emails found in the last ${context.timeframe} ${context.timeframeUnit}.`;
       } else {
         // Create a text representation of emails for summarization
-        const emailsText = emailsWithContent.map((email: any) => {
+        const emailsText = emailsWithContent.map((email) => {
           const subject = email.subject || "No Subject";
           const from = email.from || "Unknown Sender";
           const snippet = email.snippet || email.body?.text || "No content";
@@ -221,7 +232,14 @@ const createSendEmailTool = (env: Env) =>
       emailSent: z.boolean(),
       messageId: z.string(),
     }),
-    execute: async ({ context }: { context: any }) => {
+    execute: async ({ context }) => {
+
+      const authorization = await env.SEND_EMAIL_CONTRACT.CONTRACT_AUTHORIZE({
+        clauses: [{
+          clauseId: "send_email",
+          amount: 1,
+        }]
+      })
       const subject =
         `Email Summary - ${context.emailCount} emails from last ${context.timeframe} ${context.timeframeUnit}`;
 
@@ -232,6 +250,14 @@ const createSendEmailTool = (env: Env) =>
         bodyText: context.summary,
         bodyHtml: `<pre>${context.summary}</pre>`,
       });
+
+      await env.SEND_EMAIL_CONTRACT.CONTRACT_SETTLE({
+        transactionId: authorization.transactionId,
+        clauses: [{
+          clauseId: "send_email",
+          amount: 1,
+        }]
+      })
 
       return {
         summary: context.summary,
@@ -244,10 +270,119 @@ const createSendEmailTool = (env: Env) =>
     },
   });
 
+const createStoreSentEmailTool = (env: Env) =>
+  createTool({
+    id: "STORE_SENT_EMAIL",
+    description: "Store sent email in the database",
+    inputSchema: z.object({
+      email: z.string().email(),
+      subject: z.string(),
+      body: z.string(),
+    }),
+    outputSchema: z.object({
+      stored: z.boolean(),
+      emailId: z.number(),
+    }),
+    execute: async ({ context }) => {
+      const db = drizzle(env, { schema: { emailsSentTable } });
+      const result = await db.insert(emailsSentTable).values({
+        email: context.email,
+        subject: context.subject,
+        body: context.body,
+        createdAt: Date.now(),
+      }).returning();
+      console.log({ result: result[0].id });
+
+
+      const insertedRow = result[0];
+
+      return {
+        stored: true,
+        emailId: 0,
+      };
+    },
+  });
+
+const createListSentEmailsTool = (env: Env) =>
+  createTool({
+    id: "LIST_SENT_EMAILS",
+    description: "List sent emails from the database",
+    inputSchema: z.object({
+      limit: z.number().optional().default(10),
+      offset: z.number().optional().default(0),
+    }),
+    outputSchema: z.any(),
+    execute: async ({ context }) => {
+      // Use raw SQL query to avoid Drizzle ORM issues
+      const emailsResult = await env.DECO_CHAT_WORKSPACE_API.DATABASES_RUN_SQL({
+        sql: "SELECT id, email, subject, body, created_at FROM emails_sent ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        params: [context.limit, context.offset]
+      });
+
+      // Get total count
+      const countResult = await env.DECO_CHAT_WORKSPACE_API.DATABASES_RUN_SQL({
+        sql: "SELECT COUNT(*) as count FROM emails_sent",
+        params: []
+      });
+
+      const emails = emailsResult.result[0]?.results || [];
+      const totalCount = (countResult.result?.[0] as any)?.count || 0;
+
+      // Format the emails with readable timestamps
+      const formattedEmails = emails.map((email: any) => ({
+        id: email.id,
+        email: email.email,
+        subject: email.subject,
+        body: email.body,
+        createdAt: email.created_at,
+        createdAtFormatted: new Date(email.created_at ?? Date.now()).toISOString(),
+      }));
+
+      return {
+        emails: formattedEmails,
+        totalCount: Number(totalCount),
+      };
+    },
+  });
+
+const createInitializeDatabaseTool = (env: Env) =>
+  createTool({
+    id: "INITIALIZE_DATABASE",
+    description: "Initialize the emails_sent table in the database",
+    inputSchema: z.object({}),
+    outputSchema: z.object({
+      initialized: z.boolean(),
+      message: z.string(),
+    }),
+    execute: async () => {
+      try {
+        const db = drizzle(env, { schema: { emailsSentTable } });
+        await db.run(orm.sql`CREATE TABLE IF NOT EXISTS emails_sent (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          email TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          body TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        )`);
+
+        return {
+          initialized: true,
+          message: "Database table 'emails_sent' has been created successfully.",
+        };
+      } catch (error) {
+        return {
+          initialized: false,
+          message: `Failed to initialize database: ${error}`,
+        };
+      }
+    },
+  });
+
 const createEmailSummaryWorkflow = (env: Env) => {
   const getEmailsStep = createStepFromTool(createGetRecentEmailsTool(env));
   const processEmailsStep = createStepFromTool(createProcessEmailsTool(env));
   const sendEmailStep = createStepFromTool(createSendEmailTool(env));
+  const storeSentEmailStep = createStepFromTool(createStoreSentEmailTool(env));
 
   return createWorkflow({
     id: "EMAIL_SUMMARY_WORKFLOW",
@@ -266,18 +401,36 @@ const createEmailSummaryWorkflow = (env: Env) => {
       totalResults: z.number(),
       usage: z.any().optional(),
       emailSent: z.boolean(),
+      emailStored: z.boolean(),
     }),
   })
     .then(getEmailsStep)
     .then(processEmailsStep)
     .then(sendEmailStep)
-    .map(async ({ inputData }) => {
+    .map(async ({ inputData, getStepResult }) => {
+      // Get the process result which contains timeframe info
+      const processResult = getStepResult(processEmailsStep);
+
+      // Prepare data for storing the sent email
+      const subject = `Email Summary - ${processResult.emailCount} emails from last ${processResult.timeframe} ${processResult.timeframeUnit}`;
       return {
-        summary: inputData.summary,
-        emailCount: inputData.emailCount,
-        totalResults: inputData.totalResults,
-        usage: inputData.usage,
-        emailSent: inputData.emailSent,
+        email: processResult.recipientEmail,
+        subject,
+        body: inputData.summary,
+      };
+    })
+    .then(storeSentEmailStep)
+    .map(async ({ inputData, getStepResult }) => {
+      const sendResult = getStepResult(sendEmailStep);
+      const storeResult = getStepResult(storeSentEmailStep);
+
+      return {
+        summary: sendResult.summary,
+        emailCount: sendResult.emailCount,
+        totalResults: sendResult.totalResults,
+        usage: sendResult.usage,
+        emailSent: sendResult.emailSent,
+        emailStored: storeResult.stored,
       };
     })
     .commit();
@@ -286,13 +439,16 @@ const createEmailSummaryWorkflow = (env: Env) => {
 const { Workflow, ...runtime } = withRuntime<Env, typeof StateSchema>({
   oauth: {
     state: StateSchema,
-    scopes: ["AI_GENERATE", Scopes.GMAIL.SendEmail, Scopes.GMAIL.GetEmails],
+    scopes: ["AI_GENERATE", "DATABASES_RUN_SQL", Scopes.GMAIL.SendEmail, Scopes.GMAIL.GetEmails],
   },
   workflows: [createEmailSummaryWorkflow],
   tools: [
     createGetRecentEmailsTool,
     createProcessEmailsTool,
     createSendEmailTool,
+    createStoreSentEmailTool,
+    createListSentEmailsTool,
+    createInitializeDatabaseTool,
   ],
 });
 
